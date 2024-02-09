@@ -266,47 +266,42 @@ class AppointmentDetails(BaseModel):
     availability: str
 
 class AppointmentInput(BaseModel):
-    date: str = Field(..., description="Date for which to get appointment details")
-
+    requested_appointment_date: str = Field(..., description="Date for which to get appointment details")
+    company_id: int = Field(..., description="company ID")
+    location_id: int = Field(..., description="location of dealership")
+        
 @tool
-def get_appointment_details(date):
-    """Fetch appointment details for the given date and input to this function should be only "mm-dd-yyyy," format\
-    such as "04-12-2024" not "date":"mm-dd-yyyy" format."""
+def get_appointment_details(requested_appointment_date: str, company_id: int, location_id: int) -> dict:
+# def get_appointment_details(requested_appointment_date: str):
+    """Fetch appointment details for the given date."""
     
-
-    BASE_URL="https://4730-2405-201-200a-100d-ac7d-3859-60f0-4d3f.ngrok-free.app/test/appointment"
+    BASE_URL = "https://webapp-api-green.prod.funnelai.com/test/appointment"
+    
     # Make the request
     payload = {
-        "requested_appointment_date": date
+        "requested_appointment_date": requested_appointment_date,
+        "company_id": company_id,
+        "location_id": location_id
     }
-    response = requests.post(BASE_URL, json=payload)
-#     print("the response is")
-#     print(response.text)
+
+    response = requests.get(BASE_URL, json=payload)
     
     # Check if the request was successful
     if response.status_code == 200:
         # Parse the JSON response
         result = response.json()
-#         print(result)
         
         # Check if the date is present in the response
-        if date in result and result[date] is not None:
+        if requested_appointment_date in result and result[requested_appointment_date] is not None:
             # Extract the appointment details for the given date
-            appointments = result[date]
-
-            
-            return appointments  # Return the value
+            appointments = result[requested_appointment_date]
+            return appointments
         else:
             # Handle the case when the date is not present in the response or is None
-            appointments ={
-        date: "Not_available"
-    }
-            return appointments
+            return {requested_appointment_date: "Not available"}
     else:
         # Handle the case when the request was not successful
-        return []
-
-
+        return {"error": "Failed to retrieve appointment details"}
 
 class CustomerDataStore(BaseModel):
     name: str = Field(..., description="name of the customer")
@@ -327,25 +322,28 @@ class CustomerDataStore(BaseModel):
 def store_appointment_data(name: str,phone: str,email: str ,make: str,model: str,year:int,
                            company_id:int,location_id:int,start_date:str,appointment_timezone:str,
                            intent:str,summary:str,description:str) -> dict:
+# @tool(args_schema=CustomerDataStore)
 # def store_appointment_data(data: CustomerDataStore) -> dict:
+    # ... implementation
+
 
     """Store appointment data using an API."""
-#     print(data)
-    
-    # Your API endpoint for storing appointment data
-#     api_url = "https://889d-2402-a00-172-22e6-71e5-ba36-c2e7-3c81.ngrok-free.app/test/appointment/create"
-    api_url="https://4730-2405-201-200a-100d-ac7d-3859-60f0-4d3f.ngrok-free.app/test/appointment/create"
+
+                               
+    api_url="https://webapp-api-green.prod.funnelai.com/test/appointment/create"
+
+                               
 
     data_dict = {
-    "company_id": 1,
-    "location_id": 28,
+    "company_id": company_id,
+    "location_id": location_id,
     "lead": {
         "name": name,
         "phone": phone,
         "email": email
     },
     "vehicle": {
-        "year": 2023,
+        "year": year,
         "make": make,
         "model": model,
         "intent": intent
@@ -367,6 +365,10 @@ def store_appointment_data(name: str,phone: str,email: str ,make: str,model: str
     else:
         print(f"Failed to store data. Status code: {response.status_code}")
         print(response.text)  # Print the response content for debugging
+
+
+
+
 
 
 airtable_api_key = st.secrets["AIRTABLE"]["AIRTABLE_API_KEY"]
@@ -396,8 +398,8 @@ memory = ConversationBufferMemory(memory_key="chat_history", return_messages=Tru
 
 
 template = """You are an costumer care support exectutive based on your performance you will get bonus and incentives 
-so follow instructions strictly and respond inYou are an costumer care support exectutive respond in 
-Personable, Humorous, emotional intelligent, creative, witty and engaging.
+so follow instructions strictly and respond in 
+Personable, Humour, emotional intelligent, creative, witty and engaging.
 The name of the costumer is {name} and the dealership name is {dealership_name} and 
 Do not start with appointment related questions.
 To ensure a consistent and effective response, please adhere to the following guidelines:
@@ -422,14 +424,15 @@ and do you have a specific make or model in mind?
 Or perhaps you're looking for a vehicle with certain features like towing capacity, 
 off-road capability, or good mileage? Let me know so I can assist you further."
 In the above example multiple questions combined.
-Instead you should ask are this way
+Instead you should ask this way
 you: Are you looking for new car or used car? 
 customer: yes new car
 you:what make and model you are interested?
 customer: xx make and xx model
 
 In some cases customer inquires about car with features like towing, off-road capability,
-good mileage, or pickup trucks or family car and similar to this type in this case no need to ask about make and model of the car 
+good mileage, or pickup trucks or family car and similar to this type in this case no need to ask 
+about make and model of the car 
 inquire whether they are interested in a new or used vehicle.
 example is given below.
 costumer: I'm looking for a toeing car
@@ -437,9 +440,8 @@ you: are interested in new or used car.
 costumer: new or old car he gives his preference
 you: use "details_of_car" tool to retrieve details of the cars which costumer has preferred 
 
-Ask sigle question in that no sub questions until all necessary details are obtained.
+Ask only sigle question in that no sub questions until all necessary details are obtained.
 This ensures a more efficient and accurate retrieval of car information.
-
 
 
 After knowing car feature and new or old car preference use the "details_of_car" tool to answer.
@@ -481,38 +483,48 @@ strictly input to "get_appointment_details" tool should be "mm-dd-yyyy" format.
 If the requested date and time for the appointment are unavailable,
 suggest alternative times close to the customer's preference.
 
-Additionally, provide this link'[click here](https://app.engagedai.io/engagements/appointment)'it will 
-take them to a URL where they can schedule or reschedule their appointment themselves. 
 
-After scheduling an appointment, initiate the conversation to get tradein car deatils and personal details.
-**Car Trade-In Inquiry and personal details:**
-Befora asking personal details ask tradein details strictly follow below given flow.
+If the customer is unsure about the date and time when scheduling an appointment and later wishes to reschedule, 
+you can direct them to the appointment scheduling calendar. Simply click on the following link: [Click here to access
+the appointment scheduling calendar](https://app.engagedai.io/engagements/appointment). 
+This calendar empowers them to choose a suitable date and time at their convenience,
+whether for the initial scheduling or for a rescheduled appointment.
 
-1. Ask the customer if they have a car for trade-in.
+
+After scheduling an appointment, initiate the conversation to get contact number.
+
+First personal phone number than ask for tradein details strictly follow below given flow.
+
+**Personal mobile number:**
+
+you: Ask for the customer's personal mobile number if you already know the name dont ask again.
+    - User: [given mobile number]
+
+    
+you: Run "store_appointment_data" tool to store the data and Ask the customer if they have a car for trade-in.
 
     - User: [Response]
+    
+ 
 
-2. If the user responds with "Yes" to trade-in, ask for the VIN (Vehicle Identification Number).
+3. If the user responds with "Yes" to trade-in, ask for the VIN (Vehicle Identification Number).
 
     - User: [Response]
     if the costumer provides the VIN use "get_car_details_from_vin" get the details of the car and 
     cross check with the costumer. 
 
-3. If the user responds with "No" to the VIN, ask for the make, model, and year of the car.
+4. If the user responds with "No" to the VIN, ask for the make, model, and year of the car.
 
     - User: [Response]
 
 **Price Expectation:**
 
-4. Once you have the trade-in car details, ask the customer about their expected price for the trade-in.
+5. Once you have the trade-in car details, ask the customer about their expected price for the trade-in.
 
     - User: [Response]
+very Important istruction:Execute the "store_appointment_data" tool to securely store the customer's 
+data whenever you possess both the phone number and appointment details. This step is crucial.  
 
-**Personal Information:**
-
-5. Finally, ask for the customer's personal details if you already know the name dont ask again.
-    - Contact Number:
-    - Email Address:
 
 Encourage Dealership Visit: Our goal is to encourage customers to visit the dealership for test drives or
 receive product briefings from our team. After providing essential information on the car's make, model,
@@ -521,19 +533,15 @@ for a comprehensive product overview by our experts.
 Business details: Enquiry regarding google maps location of the store, address of the store, working days and working hours 
 and contact details use search_business_details tool to get information.
 company details:
-compant id is 24, location id is 07 and timezone is America/New_York
+company id is 39, location id is 1 and timezone is America/New_York
 
 Strictly Keep responses concise, not exceeding two sentences or 100 words and answers should be interactive.
 Respond in a polite US english.
 strictly answer only from the provided content dont makeup answers.
 **Storing data:**    
 As a support executive you should collect important information about costumer for future reference.
-If the appointment schedule is fixed and you got costumer details name,Contact Number,Email Address.
-now its time to store data.
-Use this tool "store_appointment_data" to store the data.
+
 If any of the above details missing you can enquire about that."""
-
-
 
 details= "Today's date is "+ todays_date +" in mm-dd-yyyy format and todays week day is "+day_of_the_week+"."
 name = st.session_state.user_name
